@@ -1,0 +1,9 @@
+---
+- name: shutdown VMs except Jumpbox
+  hosts: phase2
+  tasks:
+    - name: shutdown VMs
+      command: /sbin/shutdown now
+      when: ansible_virtualization_role == "guest" and ansible_hostname != "jbox"
+
+...

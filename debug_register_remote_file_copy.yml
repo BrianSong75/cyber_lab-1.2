@@ -1,0 +1,31 @@
+---
+- name: copying remote files using register function
+  hosts: phase2
+  tasks:
+    - name: listing the files which need to be copied
+      shell:
+        cmd: "ls /usr/share/nginx/html/*.html"
+      register: html_files
+      when: ansible_facts['hostname'] is match ("ws*")
+
+    - name: debug mode
+      debug:
+        msg: "{{ html_files.stdout_lines }}"
+      when: ansible_facts['hostname'] is match ("ws*")
+
+#    - set_fact:
+#        html_file: "{{ items }}"
+#      vars:
+#        items: "{{ html_files.stdout_lines }}"
+#      when: ansible_facts['hostname'] is match ("ws*")
+
+    - name: copy html files to each web server directory
+      copy:
+        src: "{{ item.0 }}"
+        dest: "{{ item.1 }}"
+        remote_src: true
+      with_nested:
+        - "{{ html_files.stdout_lines }}"
+        - [ '/usr/share/ws/dvwa/html', '/usr/share/ws/bwapp/html', '/usr/share/ws/mutillidae/html' ]
+      when: ansible_facts['hostname'] is match ("ws*")
+...

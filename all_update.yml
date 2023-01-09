@@ -1,0 +1,32 @@
+---
+- name: update systems
+  hosts: phase2
+  tasks:
+    - name: update system cache
+      dnf:
+        name: "*"
+        allowerasing: true
+        state: latest
+        exclude: "VirtualBox-*"
+#        disablerepo: "appstream"
+        install_weak_deps: true
+        update_cache: true
+        update_only: true
+      when:
+        - ansible_distribution_major_version | int >= 8
+        - ansible_os_family == "RedHat"
+
+    - name: update system cache
+      yum:
+        name: "*"
+        allowerasing: true
+        state: latest
+        exclude: "VirtualBox-*"
+ #       disablerepo: "appstream"
+        install_weak_deps: true
+        update_cache: true
+        update_only: true
+      when:
+        - ansible_distribution_major_version | int <= 7
+        - ansible_os_family == "RedHat"
+...

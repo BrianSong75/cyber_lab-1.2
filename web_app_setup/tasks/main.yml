@@ -1,0 +1,109 @@
+---
+- name: install virtualenv pip modules
+  dnf:
+    name: [ virtualenv, python2-pip, python2 ]
+    state: present
+    install_weak_deps: true
+    update_cache: true
+  when: ansible_hostname is match ("ws*")
+
+- name: install pip2 docker
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  pip:
+    name: docker
+    state: present
+  when: ansible_hostname is match ("ws*")
+
+- name: start DVWA server
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  docker_container:
+    name: dvwa
+    image: cyberxsecurity/dvwa
+    log_driver: syslog
+    log_options:
+      syslog-address: udp://127.0.0.1:514
+      syslog-facility: daemon
+      tag: dvwa
+      mode: non-blocking
+      max-buffer-size: 4m
+      syslog-tls-skip-verify: "true"
+      syslog-format: rfc5424micro
+    ports:
+      - "18000:80/tcp"
+    restart_policy: always
+    state: started
+  when: ansible_facts ['hostname'] is match("ws*")
+
+- name: start BWAPP server
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  docker_container:
+    name: bwapp
+    image: cyberxsecurity/bwapp
+    log_driver: syslog
+    log_options:
+      syslog-address: udp://127.0.0.1:514
+      syslog-facility: daemon
+      tag: dvwa
+      mode: non-blocking
+      max-buffer-size: 4m
+      syslog-tls-skip-verify: "true"
+      syslog-format: rfc5424micro
+    ports:
+      - "18800:80/tcp"
+    restart_policy: always
+    state: started
+  when: ansible_facts ['hostname'] is match("ws*")
+
+- name: start MUTILLIDAE server
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  docker_container:
+    name: mutillidae
+    image: cyberxsecurity/mutillidae
+    log_driver: syslog
+    log_options:
+      syslog-address: udp://127.0.0.1:514
+      syslog-facility: daemon
+      tag: mutillidae
+      mode: non-blocking
+      max-buffer-size: 4m
+      syslog-tls-skip-verify: "true"
+      syslog-format: rfc5424micro
+    ports:
+      - "18880:80/tcp"
+    restart_policy: always
+    state: started  
+  when: ansible_facts['hostname'] is match("ws*")
+
+- name: let nginx listen to these ports
+  seport:
+    ports: 18000,18800,18880
+    proto: tcp
+    reload: true
+    setype: http_port_t
+    state: present
+  when: ansible_hostname is match ("ws*")
+
+- name: firewall adjustments
+  firewalld:
+    zone: work
+    permanent: true
+    state: enabled
+    port: "{{ item }}"
+  with_items:
+    - 18000/tcp
+    - 18800/tcp
+    - 18880/tcp
+  when: ansible_hostname is match ("ws*")
+
+#- name: change SElinux policy on proxy servers
+#  command:
+#    setsebool -P httpd_can_network_connect 1
+#  when: ansible_facts['hostname'] is match ("ws*") or ansible_facts['hostname'] == "lb"
+
+
+...
+

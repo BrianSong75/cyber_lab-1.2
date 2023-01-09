@@ -1,0 +1,47 @@
+---
+- name: shutdown the whole network
+  hosts: phase1
+  become: true
+  tasks:
+
+  - set_fact:
+      farm0:
+        - { dir: '.ws1', name: 'ws1' }
+        - { dir: '.ws2', name: 'ws2' }
+#        - { dir: '.vpn', name: 'vpn' }
+      farm1:
+        - { dir: '.ws3', name: 'ws3' }
+        - { dir: '.lb', name: 'lb' }
+#        - { dir: '.log', name: 'log' }
+        
+  - name: shutdown VMs in Farm0
+    shell:
+      cmd: 'if [[ -n $(vboxmanage list runningvms) ]]; then vboxmanage controlvm "{{ item.name }}" savestate; fi'
+    with_items: "{{ farm0 }}"
+    when: ansible_hostname == "Farm0"
+
+  - name: shutdown VMs in Farm1
+    shell:
+      cmd: 'if [[ -n $(vboxmanage list runningvms) ]]; then vboxmanage controlvm "{{ item.name }}" savestate; fi'
+    with_items: "{{ farm1 }}"
+    when: ansible_hostname == "Farm1"
+
+  - name: shutdown hosts
+    command: /usr/sbin/shutdown
+    when:
+      - ansible_virtualization_role != "guest"
+#      - ansible_hostname != "Farm2"
+
+
+#  - name: shutdown VMs in Farm2
+#    shell:
+#      cmd: 'if [[ -n $(vboxmanage list runningvms) ]]; then vboxmanage controlvm "{{ item.name }}" poweroff; fi'
+#    with_items: "{{ farm2 }}"
+#    when: ansible_hostname == "Farm2"
+
+
+#  - name: shutdown jumpbox
+#    command: /usr/sbin/shutdown +2
+#    when: ansible_facts['hostname'] == "jbox"
+ 
+...

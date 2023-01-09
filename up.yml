@@ -1,0 +1,34 @@
+---
+- name: turn on all systems
+  hosts: phase1
+  tasks:
+    - name: set names
+      set_fact:
+        farm0:
+          - { name: 'ws1' }
+          - { name: 'ws2' }
+          - { name: 'vpn' }
+        farm1:
+          - { name: 'ws3' }
+          - { name: 'lb' }
+          - { name: 'log' }
+
+    - name: turn on VMs in Farm0
+      shell:
+        cmd: 'vboxmanage startvm --type headless "{{ item.name }}"'
+      loop: "{{ farm0 }}"
+      when: ansible_hostname == "Farm0"
+
+    - name: turn on VMs in Farm1
+      shell:
+        cmd: vboxmanage startvm --type headless "{{ item.name }}"
+      loop: "{{ farm1 }}"
+      when: ansible_hostname == "Farm1"
+
+#    - name: turn on VMs in Farm2
+#      shell:
+#        cmd: vboxmanage startvm --type headless "{{ item.name }}"
+#      loop: "{{ farm2 }}"
+#      when: ansible_hostname == "Farm2"
+
+...

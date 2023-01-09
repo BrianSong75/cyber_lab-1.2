@@ -1,0 +1,312 @@
+---
+- name: set facts on IPs, Network Interfaces, & Services
+  set_fact:
+      farm0:
+        - { ip: '192.168.0.230' }
+      farm1:
+        - { ip: '192.168.0.240' }
+      farm2:
+        - { ip: '192.168.0.250' }
+      elk:
+        - { ip: '192.168.0.220' }
+      jbox:
+        - { ip: '192.168.0.210' }
+      ws1:
+        - { ip: '192.168.0.231' }
+      ws2:
+        - { ip: '192.168.0.232' }
+      ws3:
+        - { ip: '192.168.0.241' }
+      lb:
+        - { ip: '192.168.0.242' }
+      log:
+        - { ip: '192.168.0.243' }
+      vpn:
+        - { ip: '192.168.0.233' }
+      dis_service_work:
+        - [ 'cockpit', 'dhcpv6-client', 'ssh' ]
+      en_service_ws:
+        - [ 'http', 'https' ]
+
+- name: stop firewalld.service
+  systemd:
+    name: firewalld.service
+    state: stopped
+    enabled: false
+
+- name: remove old firewalld
+  dnf:
+    name: firewalld
+    autoremove: true
+    state: absent
+    
+- name: remove any old firewalld zone configuration
+  file:
+    path: "/etc/firewalld"
+    state: absent
+    force: true
+
+- name: install firewalld
+  dnf:
+    name: firewalld
+    state: latest
+    install_weak_deps: true
+    update_cache: true
+
+- name: start firewalld service
+  systemd:
+    name: firewalld
+    state: started
+    enabled: true
+    force: true
+
+- name: add ssh source IPs to "dmz" zone
+  firewalld:
+    zone: dmz
+    source: "{{ item.ip }}"
+    state: enabled
+    permanent: true
+  with_items:
+    - "{{ farm2 }}"
+    - "{{ jbox }}"
+  when: ansible_hostname != "jbox"
+
+- name: update interface zone for NetworkManager at jbox
+  ini_file:
+    path: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }}"
+    section: null
+    state: present
+    option: ZONE
+    value: dmz
+    no_extra_spaces: true
+  when: ansible_hostname == "jbox"
+
+- name: restart NetworkManager.service at jbox
+  systemd:
+    name: NetworkManager
+    state: restarted
+    enabled: true
+    force: true
+  when: ansible_hostname == "jbox"
+
+- name: change target in "DMZ" zone from default to drop for jbox
+  shell:
+    cmd: "firewall-cmd --zone=dmz --set-target=DROP --permanent && firewall-cmd --reload"
+  when: ansible_hostname == "jbox"
+
+- name: move interface to "Drop" zone in log, vpn, farms & web servers
+  ini_file:
+    path: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }}"
+    state: present 
+    section: null
+    option: ZONE
+    value: drop
+    no_extra_spaces: true
+  when:
+    - ansible_hostname != "lb"
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "ELK"
+
+- name: restart NetworkManager service
+  systemd:
+    name: firewalld
+    state: restarted
+    enabled: true
+    force: true
+  when:
+    - ansible_hostname != "lb"
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "ELK"
+
+- name: remove existing services in "Work" zone at ELK
+  firewalld:
+    zone: work
+    state: disabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: "{{ dis_service_work }}"
+  when: ansible_hostname == "ELK"
+
+- name: add elasticsearch service to "Work" zone at ELK
+  firewalld:
+    zone: work
+    state: enabled
+    permanent: true
+    service: elasticsearch
+  when: ansible_hostname == "ELK"
+
+- name: add source IPs to "Work" zone at ELK
+  firewalld:
+    zone: work
+    state: enabled
+    permanent: true
+    source: "{{ item.ip }}"
+  with_items:
+    - "{{ farm0 }}"
+    - "{{ farm1 }}"
+    - "{{ elk }}"
+    - "{{ ws1 }}"
+    - "{{ ws2 }}"
+    - "{{ ws3 }}"
+    - "{{ lb }}"
+    - "{{ log }}"
+    - "{{ vpn }}"
+  when: ansible_hostname == "ELK"
+
+- name: add elasticsearch & http + https services to "DMZ" zone at ELK
+  firewalld:
+    zone: dmz
+    state: enabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: [ 'elasticsearch', 'http', 'https' ]
+  when: ansible_hostname == "ELK"
+
+- name: remove all services in "Public" zone at ELK
+  firewalld:
+    zone: public
+    state: disabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: "{{ dis_service_work }}"
+  when: ansible_hostname == "ELK"
+
+- name: add http + https services to "Public" zone at ELK
+  firewalld:
+    zone: public
+    state: enabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: [ 'http', 'https' ]
+  when: ansible_hostname == "ELK"
+
+- name: change target from default to DROP in "Public" zone at ELK
+  shell:
+    cmd: "firewall-cmd --permanent --zone=public --set-target=DROP && firewall-cmd --reload"
+  when: ansible_hostname == "ELK"
+
+- name: remove existing services in "Work" zone at web servers
+  firewalld:
+    zone: work
+    state: disabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: "{{ dis_service_work }}"
+  when: ansible_hostname is match ("ws*")
+    
+- name: add necessary services to web servers' work zone
+  firewalld:
+    zone: work
+    state: enabled
+    service: "{{ item }}"
+    permanent: true
+  with_items: "{{ en_service_ws }}"
+  when: ansible_hostname is match ("ws*")
+
+- name: add Load Balance as only HTTP & HTTPS source 
+  firewalld:
+    zone: work
+    source: "{{ item.ip }}"
+    state: enabled
+    permanent: true
+  with_items: "{{ lb }}"
+  when: ansible_hostname is match ("ws*")
+
+- name: adding HTTP & HTTPS service to Load Balance's work zone
+  firewalld:
+    zone: work
+    service: "{{ item }}"
+    state: enabled
+    permanent: true
+  with_items: "{{ en_service_ws }}"
+  when: ansible_hostname == "lb"
+
+- name: remove unnecessary services in "Work" zone at Load balancer
+  firewalld:
+    zone: work
+    state: disabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: "{{ dis_service_work }}"
+  when: ansible_hostname == "lb"
+
+- name: move default interface to "Work" zone
+  ini_file:
+    path: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }}"
+    section: null
+    state: present
+    option: ZONE
+    value: work
+    no_extra_spaces: true
+  when: ansible_facts['hostname'] == "lb"
+
+- name: restart Networkmanager at lb
+  systemd:
+    name: NetworkManager
+    state: restarted
+    enabled: true
+    force: true
+  when: ansible_facts['hostname'] == "lb"
+
+- name: add http & https service to "DMZ" zone
+  firewalld:
+    zone: dmz
+    state: enabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: [ 'http', 'https' ]
+  when: ansible_facts['hostname'] == "lb"
+
+- name: remove unnecessary services in "Work" zone at log
+  firewalld:
+    zone: work
+    state: disabled
+    permanent: true
+    service: "{{ item }}"
+  with_items: "{{ dis_service_work }}"
+  when: ansible_hostname == "log"
+
+- name: adding syslog-tls service to log's work zone
+  firewalld:
+    zone: work
+    service: syslog-tls
+    state: enabled
+    permanent: true
+  when: ansible_hostname == "log"
+
+- name: adding source IPs to "Work" zone at log
+  firewalld:
+    zone: work
+    state: enabled
+    permanent: true
+    source: "{{ item.ip }}"
+  with_items:
+    - "{{ farm0 }}" 
+    - "{{ farm1 }}" 
+    - "{{ elk }}" 
+    - "{{ ws1 }}" 
+    - "{{ ws2 }}" 
+    - "{{ ws3 }}" 
+    - "{{ lb }}" 
+    - "{{ log }}" 
+    - "{{ vpn }}"
+  when: ansible_hostname == "log" 
+
+- name: add syslog-tls service to "DMZ" zone at log
+  firewalld:
+    zone: dmz
+    state: enabled
+    permanent: true
+    service: syslog-tls
+  when: ansible_facts['hostname'] == "log"
+
+- name: reload firewalld settings
+  command: sudo firewall-cmd --reload
+
+- name: restart firewalld service
+  systemd:
+    name: firewalld
+    enabled: true
+    state: restarted
+    force: true
+...

@@ -1,0 +1,153 @@
+---
+- name: make webserver directories for farm0
+  file:
+    path: ~ansibot/{{ item }}/vagrant/
+    state: directory
+    owner: root
+    mode: '0640'
+    recurse: true
+  with_items:
+    - ".ws1"
+    - ".ws2"
+    - ".vpn"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: make webserver directories for farm1
+  file:
+    path: ~ansibot/{{ item }}/vagrant/
+    state: directory
+    owner: root
+    mode: '0640'
+    recurse: true
+  with_items:
+    - ".ws3"
+    - ".lb"
+    - ".log"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: destroy old Vagrantfiles
+  file:
+    path: ~ansibot/{{ item }}/vagrant/Vagrantfile
+    state: absent
+  with_items:
+    - ".ws1"
+    - ".ws2"
+    - ".ws3"
+    - ".vpn"
+    - ".lb"
+    - ".log"
+  when: ansible_facts['hostname'] is match ("Farm*")
+
+- name: initiate Vagrant box - Oracle Linux 8 Minimal edition with 2 CPUs + 2G mem
+  shell:
+    chdir: ~ansibot/{{ item }}/vagrant/
+    cmd: vagrant init oraclelinux/8.5.320 https://oracle.github.io/vagrant-projects/boxes/oraclelinux/8.json
+  with_items:
+    - ".ws1"
+    - ".ws2"
+    - ".vpn"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: initiate Vagrant box - Oracle Linux 8 minimal edition with 2 CPUs + 2G mem
+  shell:
+    chdir: ~ansibot/{{ item }}/vagrant
+    cmd: vagrant init oraclelinux/8.5.320 https://oracle.github.io/vagrant-projects/boxes/oraclelinux/8.json
+  with_items:
+    - ".ws3"
+    - ".lb"
+    - ".log"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: modify cpu & mem configuration for VMs
+  blockinfile:
+    backup: yes
+    path: ~ansibot/{{ item.dir }}/vagrant/Vagrantfile
+    state: present
+    insertbefore: '^end'
+    marker: "#{mark} VirtualBox Configuration Block"
+    marker_begin: "BEGIN"
+    marker_end: "END"
+    block: |1
+         config.vm.provider "virtualbox" do |v|
+           v.cpus = "1"
+           v.memory = "2048"
+           v.name = "{{ item.name }}"
+         end
+  with_items:
+    - { dir: '.ws1', name: 'ws1' }
+    - { dir: '.ws2', name: 'ws2' }
+    - { dir: '.vpn', name: 'vpn' }
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: modify cpu & mem configuration for VMs
+  blockinfile:
+    backup: yes
+    path: ~ansibot/{{ item.dir }}/vagrant/Vagrantfile
+    state: present
+    insertbefore: '^end'
+    marker: "#{mark} VirtualBox Configuration Block"
+    block: |1
+         config.vm.provider "virtualbox" do |v|
+           v.cpus = "1"
+           v.memory = "2048"
+           v.name = "{{ item.name }}"
+         end
+  with_items:
+    - { dir: '.ws3', name: 'ws3' }
+    - { dir: '.lb', name: 'lb' }
+    - { dir: '.log', name: 'log' }
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: modify network configuration for VMs
+  lineinfile:
+    backup: true
+    path: ~ansibot/{{ item.name }}/vagrant/Vagrantfile
+    state: present
+    insertafter: '^  # config.vm.network' 
+    line: "{{ item.ip }}"
+  with_items:
+    - { name: '.ws1', ip: '  config.vm.network "public_network", ip: "192.168.1.111", bridge: "{{ ansible_default_ipv4.interface }}"' }
+    - { name: '.ws2', ip: '  config.vm.network "public_network", ip: "192.168.1.112", bridge: "{{ ansible_default_ipv4.interface }}"' }
+    - { name: '.vpn', ip: '  config.vm.network "public_network", ip: "192.168.1.119", bridge: "{{ ansible_default_ipv4.interface }}"' }
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: modify network configuration for VMs
+  lineinfile:
+    backup: true
+    path: ~ansibot/{{ item.name }}/vagrant/Vagrantfile
+    state: present
+    insertafter: '^  # config.vm.network' 
+    line: "{{ item.ip }}"
+  with_items:
+    - { name: '.ws3', ip: '  config.vm.network "public_network", ip: "192.168.1.113", bridge: "{{ ansible_default_ipv4.interface }}"' }
+    - { name: '.lb', ip: '  config.vm.network "public_network", ip: "192.168.1.117", bridge: "{{ ansible_default_ipv4.interface }}"' }
+    - { name: '.log', ip: '  config.vm.network "public_network", ip: "192.168.1.118", bridge: "{{ ansible_default_ipv4.interface }}"' }
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: change the box name
+  replace:
+    path: ~ansibot/{{ item }}/vagrant
+    regexp: "oraclelinux/8.5.320"
+    replace: "oraclelinux/8"
+- name: initiate Vagrantfile
+  shell:
+    chdir: ~ansibot/{{ item }}/vagrant
+    cmd: vagrant up
+  loop:
+    - ".ws1"
+    - ".ws2"
+    - ".vpn"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: initiate Vagrantfile
+  shell:
+    chdir: ~ansibot/{{ item }}/vagrant
+    cmd: vagrant up
+  loop:
+    - ".ws3"
+    - ".lb"
+    - ".log"
+  when: ansible_facts['hostname'] == "Farm1"
+
+
+...

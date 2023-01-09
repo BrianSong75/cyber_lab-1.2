@@ -1,0 +1,10 @@
+---
+- name: shutdown the whole network
+  hosts: phase1
+  tasks:
+
+  - name: shutdown hosts
+    command: /usr/sbin/shutdown
+    when: ansible_facts['virtualization_role'] != "guest"
+ 
+...

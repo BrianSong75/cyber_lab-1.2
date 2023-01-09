@@ -1,0 +1,44 @@
+---
+- name: install rsync daemon
+  dnf:
+   name: rsync-daemon
+   state: latest
+   install_weak_deps: true
+   update_cache: true
+  when: ansible_hostname == "log"
+
+- name: add rsync daemon user
+  user:
+    name: nsync
+    state: present
+    append: true
+    groups: root,wheel
+    create_home: true
+    home: /home/.clerk/
+    shell: /usr/bin/bash
+    password_lock: true
+    system: true
+  when: ansible_hostname == "log"
+
+- name: create rsyncd.conf
+  blockinfile:
+    path: /etc/rsyncd.conf
+    state: present
+    create: true
+    backup: true
+    marker: "#{mark} Cyber.Lab Log collection"
+    owner: root
+    mode: '0644'
+    block: |
+      [global]
+      uid = nsync
+      gid = nsync
+      pid file = ~nsync/./rsyncd.pid
+      use chroot = true
+      transfer logging = true
+      max connections = 10
+      ignore nonreadable = true
+      dont compress = *.gz *.tgz *.zip *.z *.Z *.rpm *.deb *.bz2
+      write only = true
+      daemon chroot = ~nsync/./
+...

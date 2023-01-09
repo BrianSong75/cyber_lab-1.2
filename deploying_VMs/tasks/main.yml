@@ -1,0 +1,256 @@
+---
+- set_fact:
+    farm0:
+      - { dir: '~ansibot/.ws1/vagrant', file: '~ansibot/.ws1/vagrant/Vagrantfile', name: 'ws1', ip: '192.168.0.231' }
+      - { dir: '~ansibot/.ws2/vagrant', file: '~ansibot/.ws2/vagrant/Vagrantfile', name: 'ws2', ip: '192.168.0.232' }
+      - { dir: '~ansibot/.vpn/vagrant', file: '~ansibot/.vpn/vagrant/Vagrantfile', name: 'vpn', ip: '192.168.0.233' }
+    farm1:
+      - { dir: '~ansibot/.ws3/vagrant', file: '~ansibot/.ws3/vagrant/Vagrantfile', name: 'ws3', ip: '192.168.0.241' }
+      - { dir: '~ansibot/.lb/vagrant', file: '~ansibot/.lb/vagrant/Vagrantfile', name: 'lb', ip: '192.168.0.242' }
+      - { dir: '~ansibot/.log/vagrant', file: '~ansibot/.log/vagrant/Vagrantfile', name: 'log', ip: '192.168.0.243' }
+
+- name: create VM directories for Farm0
+  file:
+    path: "{{ item.dir }}"
+    state: directory
+    owner: root
+    mode: '0644'
+    recurse: true
+    force: true
+  with_items: "{{ farm0 }}"
+  when: ansible_hostname == "Farm0"
+
+- name: create VM directories for Farm1
+  file:
+    path: "{{ item.dir }}"
+    state: directory
+    owner: root
+    mode: '0644'
+    force: true
+    recurse: true
+  with_items: "{{ farm1 }}"
+  when: ansible_hostname == "Farm1"
+
+- name: shutdown VMs in Farm0
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: "if [[ -f ./Vagrantfile ]]; then vagrant halt; fi"
+  with_items: "{{ farm0 }}"
+  when: ansible_hostname == "Farm0"
+
+- name: shutdown VMs in Farm1
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: "if [[ -f ./Vagrantfile ]]; then vagrant halt; fi"
+  with_items: "{{ farm1 }}"
+  when: ansible_hostname == "Farm1"
+
+- name: destroy any previous Virtualbox VMs
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: 'if [[ -n $(vboxmanage list vms) ]]; then vboxmanage unregistervm {{ item.name }} --delete; fi'
+  with_items: "{{ farm0 }}"
+  when: ansible_hostname == "Farm0"
+
+- name: destroy any previous Virtualbox VMs
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: 'if [[ -n $(vboxmanage list vms) ]]; then vboxmanage unregistervm {{ item.name }} --delete; fi'
+  with_items: "{{ farm1 }}"
+  when: ansible_hostname == "Farm1"
+
+- name: destroy old Vagrantfiles
+  file:
+    path: "{{ item.file }}"
+    state: absent
+  with_items:
+    - "{{ farm0 }}"
+    - "{{ farm1 }}"
+  when: ansible_facts['hostname'] is match ("Farm*")
+
+- name: initiate Vagrant box - Alma Linux 8.6 in Farm0
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: vagrant init almalinux/8
+  with_items: "{{ farm0 }}"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: initiate Vagrant box - Alma Linux 8.6 in Farm1
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: vagrant init almalinux/8
+  with_items: "{{ farm1 }}"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: modify cpu & mem configuration for VMs in Farm0
+  blockinfile:
+    backup: yes
+    path: "{{ item.file }}"
+    state: present
+    insertbefore: '^end'
+    marker: "#{mark} VirtualBox Configuration Block"
+    marker_begin: "BEGINNING"
+    marker_end: "ENDING"
+    block: |1
+       config.vm.provider "virtualbox" do |vb|
+         vb.cpus = "2"
+         vb.memory = "4096"
+         vb.name = "{{ item.name }}"
+       end
+  with_items: "{{ farm0 }}"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: modify cpu & mem configuration for VMs in Farm1
+  blockinfile:
+    backup: yes
+    path: "{{ item.file }}"
+    state: present
+    insertbefore: '^end'
+    marker: "#{mark} VirtualBox Configuration Block"
+    marker_begin: "BEGINNING"
+    marker_end: "ENDING"
+    block: |1
+       config.vm.provider "virtualbox" do |vb|
+         vb.cpus = "2"
+         vb.memory = "4096"
+         vb.name = "{{ item.name }}"
+       end
+  with_items: "{{ farm1 }}"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: set VM names & IPs in Farm0
+  blockinfile:
+    path: "{{ item.file }}"
+    state: present
+    insertafter: '^#ENDING'
+    marker: "#{mark} VM name & IP for Vagrant"
+    marker_begin: "{{ item.name }}"
+    marker_end: "{{ item.name }}"
+    block: |1
+       config.vm.boot_timeout = 600
+       config.vm.hostname = "{{ item.name }}"
+       config.vm.network "public_network", ip: "{{ item.ip }}", bridge: "{{ ansible_default_ipv4.interface }}"
+  with_items: "{{ farm0 }}"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: set VM names & IPs in Farm1
+  blockinfile:
+    path: "{{ item.file }}"
+    state: present
+    insertafter: '^#ENDING'
+    marker: "#{mark} VM name & IP for Vagrant"
+    marker_begin: "{{ item.name }}"
+    marker_end: "{{ item.name }}"
+    block: |1
+       config.vm.boot_timeout = 600
+       config.vm.hostname = "{{ item.name }}"
+       config.vm.network "public_network", ip: "{{ item.ip }}", bridge: "{{ ansible_default_ipv4.interface }}"
+  with_items: "{{ farm1 }}"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: create ssh key pairs for VMs
+  openssh_keypair:
+    path: "~root/.ssh/.CA/ssh_host_{{ item.name }}"
+    type: ed25519
+    size: 4096
+    state: present
+    force: true
+  with_items:
+    - "{{ farm0 }}"
+    - "{{ farm1 }}"
+  when: ansible_hostname == "Farm2"
+
+- name: signing ssh keys for VMs
+  shell:
+    chdir: "~root/.ssh/.CA/"
+    cmd: "ssh-keygen -s CA_svr -I {{ item.name }} -h -n svr@{{ item.name }} -V +53w ssh_host_{{ item.name }}.pub"
+  with_items:
+    - "{{ farm0 }}"
+    - "{{ farm1 }}"
+  when: ansible_hostname == "Farm2"
+
+- name: update the provision block in the Vagrat file at Farm0
+  blockinfile:
+    path: "{{ item.file }}"
+    state: present
+    insertafter: '#{{ item.name }}'
+    marker: "#{mark} Provisioning Block"
+    marker_begin: "{{ item.name }}"
+    marker_end: "{{ item.name }}"
+    block: |1
+       config.vm.provision "1st", type: "shell", inline:<<-SHELL
+         chpasswd <<<root:'halsuItda!25'
+         for i in ha resilientstorage rt nfv plus powertools; do dnf config-manager $1 --set-enabled; done 
+         dnf install -y epel*
+         dnf install -y htop tree nano bash-completion python36 python3-pip yum-utils
+         dnf update -y --disablerepo epel-next && dnf upgrade -y --disablerepo epel-next
+         useradd -m -s /bin/bash -G wheel,adm,sys,users,root -p $(openssl passwd nada) ansibot
+         echo "ansibot ALL=(ALL) NOPASSWD:ALL" > sudoer_ansibot
+         chmod -c 0440 sudoer_ansibot
+         chown -c root:root sudoer_ansibot
+         mv -v sudoer_ansibot /etc/sudoers.d/
+         visudo -c
+         sed -i '/^#PasswordAuthentication/ s/yes/no/' /etc/ssh/sshd_config
+         sed -i '/^PasswordAuthentication/ s/no/yes/' /etc/ssh/sshd_config
+         systemctl restart sshd.service
+       SHELL
+  with_items: "{{ farm0 }}"
+  when: ansible_hostname == "Farm0"
+
+- name: update the provision block in the Vagrantfile@Farm1
+  blockinfile:
+    path: "{{ item.file }}"
+    state: present
+    insertafter: '#{{ item.name }}'
+    marker: "#{mark} Provisioning Block"
+    marker_begin: "{{ item.name }}"
+    marker_end: "{{ item.name }}"
+    block: |1
+       config.vm.provision "1st", type: "shell", inline:<<-SHELL
+         chpasswd <<<root:'halsuItda!25'
+         for i in ha nfv rt resilientstorage plus powertools; do dnf config-manager $i --set-enabled; done
+         dnf install -y epel*
+         dnf install -y htop tree nano bash-completion python3 python36 python3-pip yum-utils
+         dnf update -y --disablerepo epel-next && dnf upgrade -y --disablerepo epel-next
+         useradd -m -s /bin/bash -G wheel,sys,adm,users,root -p $(openssl passwd nada) ansibot
+         echo "ansibot ALL=(ALL) NOPASSWD:ALL" > sudoer_ansibot
+         chmod -c 0440 sudoer_ansibot
+         chown -c root:root sudoer_ansibot
+         mv -v sudoer_ansibot /etc/sudoers.d/
+         visudo -c
+         sed -i '/^#PasswordAuthentication/ s/yes/no/' /etc/ssh/sshd_config
+         sed -i '/^PasswordAuthentication/ s/no/yes/' /etc/ssh/sshd_config
+         systemctl restart sshd.service
+       SHELL
+  with_items: "{{ farm1 }}"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: initiate VMs in Farm0
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: "vagrant up"
+  with_items: "{{ farm0 }}"
+  when: ansible_facts['hostname'] == "Farm0"
+
+- name: initiate VMs in Farm1
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: "vagrant up"
+  with_items: "{{ farm1 }}"
+  when: ansible_facts['hostname'] == "Farm1"
+
+- name: switch from vagrant to virtualbox in Farm0
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: vagrant halt && vboxmanage startvm --type headless "{{ item.name }}"
+  with_items: "{{ farm0 }}"
+  when: ansible_hostname == "Farm0"
+
+- name: switch from vagrant to virtualbox in Farm1
+  shell:
+    chdir: "{{ item.dir }}"
+    cmd: vagrant halt && vboxmanage startvm --type headless "{{ item.name }}"
+  with_items: "{{ farm1 }}"
+  when: ansible_hostname == "Farm1"
+
+...

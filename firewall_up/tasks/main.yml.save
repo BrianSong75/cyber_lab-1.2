@@ -1,0 +1,17 @@
+---
+- name: install firewall-cmd
+  dnf:
+    name: firewall-cmd
+    state: latest
+    install_weak_deps: true
+
+- name: setting up firewall for jbox
+  firewalld:
+    zone: 
+- name: start firewalld.service
+  service:
+    name: firewalld.service
+    state: restarted
+    enabled: true
+
+...

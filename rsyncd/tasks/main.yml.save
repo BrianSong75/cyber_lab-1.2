@@ -1,0 +1,34 @@
+---
+- name: install rsync daemon
+  dnf:
+   name: rsync-daemon
+   state: latest
+   install_weak_deps: true
+   update_cache: true
+  when: ansible_hostname == "log"
+
+- name: create rsyncd.conf
+  blockinfile:
+    path: /etc/rsyncd.conf
+    state: present
+    backup: true
+    create: true
+    marker: "#[mark] cyber lab rsync daemon setup"
+    owner: root
+    mode: '0644'
+    block: |
+      [global]
+      uid = ansibot
+      gid = ansibot
+      pid file = /home/ansibot/rsyncd.pid
+      use chroot = yes
+      transfer logging = yes
+      timeout = 900
+      max connection = 10
+      ignore nonreadable = yes
+      dont compress = *.gz *.tgz *.zip *.z *.Z *.rpm *.bz2
+      [jbox]
+      path = /home/ansibot/jbox/
+      comment = backing up jbox
+      
+...

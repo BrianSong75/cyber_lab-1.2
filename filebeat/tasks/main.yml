@@ -1,0 +1,103 @@
+---
+- name: download filebeat rpm file
+  get_url:
+    url: https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.3.3-x86_64.rpm
+    dest: /home/minion/ansible/roles/filebeat/files/
+    force: true
+  when: ansible_facts['hostname'] == "jbox"
+
+- name: copy filebeat installation package file
+  copy:
+    src: filebeat-8.3.3-x86_64.rpm
+    dest: /tmp/filebeat-8.3.3-x86_64.rpm
+    owner: root
+    mode: '0644'
+
+- name: install filebeat
+  dnf:
+    name: /tmp/filebeat-8.3.3-x86_64.rpm
+    state: present
+    disable_gpg_check: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: install filebeat
+  yum:
+    name: /tmp/filebeat-8.3.3-x86_64.rpm
+    state: present
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: copy filebeat pre-configured configuration file for hosting computers
+  copy:
+    src: filebeat.yml
+    dest: /etc/filebeat/filebeat.yml
+    owner: root
+    mode: '0600'
+    backup: true
+
+- name: update names in filebeat.yml file
+  replace:
+    path: /etc/filebeat/filebeat.yml
+    regexp: labname
+    replace: "{{ ansible_facts['hostname'] }}"
+    backup: true
+  
+#  when: ansible_virtualization_role == "host"
+
+#- name: copy filebeat pre-configured configuration file for container-hosting computers
+#  copy:
+#    src: filebeat_container.yml
+#    dest: /etc/filebeat/filebeat.yml
+#    owner: root
+#    mode: '0600'
+#    backup: true
+#  when: ansible_virtualization_role != "host"
+
+- name: enable filebeat modules
+  command:
+    filebeat modules enable system iptables
+
+- name: enable filebeat modules for web servers, load balancer, & ELK
+  command:
+    filebeat modules enable nginx
+  when: ansible_hostname is match ("ws*") or ansible_facts['hostname'] == "ELK" or ansible_facts['hostname'] == "lb"
+
+#- name: enable filebeat modules for elk server
+#  command:
+#    filebeat modules enable elasticsearch kibana logstash apache snort
+#  when: ansible_facts['hostname'] == "ELK"
+
+- name: update module configurations
+  copy:
+    src: "{{ item }}"
+    dest: "/etc/filebeat/modules.d/{{ item }}"
+    owner: root
+    mode: '0644'
+    backup: true
+  with_items:
+    - system.yml
+    - iptables.yml
+
+- name: update module configurations
+  copy:
+    src: nginx.yml
+    dest: "/etc/filebeat/modules.d/"
+    owner: root
+    mode: '0644'
+    backup: true
+  when: ansible_hostname is match ("ws*") or ansible_facts['hostname'] == "ELK" or ansible_facts['hostname'] == "lb"
+
+- name: set up filebeat
+  command:
+    filebeat setup
+
+- name: start filebeat service
+  service:
+    name: filebeat
+    enabled: true
+    state: restarted
+
+...

@@ -1,0 +1,23 @@
+---
+- name: import GPG key for elasticsearch repository
+  command:
+    rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+- name: copy elasticsearch.repo file into elk server
+  copy:
+    src: elasticsearch.repo
+    dest: /etc/yum.repos.d/elasticsearch.repo
+    owner: root
+    mode: '0644'
+    backup: true
+
+- name: install elasticsearch
+  dnf:
+    update_cache: true
+    name: elasticsearch
+    enablerepo: elasticsearch
+    state: latest
+    install_weak_deps: true
+
+- name: 
+...

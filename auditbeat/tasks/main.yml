@@ -1,0 +1,70 @@
+---
+- name: download auditbeat rpm file
+  get_url:
+    url: https://artifacts.elastic.co/downloads/beats/auditbeat/auditbeat-8.3.3-x86_64.rpm
+    dest: /home/minion/ansible/roles/auditbeat/files/
+    force: true
+  when: ansible_facts['hostname'] == "jbox"
+
+- name: copy auditbeat package file
+  copy:
+    src: auditbeat-8.3.3-x86_64.rpm
+    dest: /tmp/auditbeat-8.3.3-x86_64.rpm
+    owner: root
+    mode: '0644'
+
+- name: install auditbeat package
+  dnf:
+    name: /tmp/auditbeat-8.3.3-x86_64.rpm
+    state: present
+    update_cache: true
+    disable_gpg_check: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: install auditbeat package
+  yum:
+    name: /tmp/auditbeat-8.3.3-x86_64.rpm
+    state: present
+    update_cache: true
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: copy pre-configured auditbeat configurationfile
+  copy:
+    src: auditbeat.yml
+    dest: /etc/auditbeat/auditbeat.yml
+    owner: root
+    mode: '0600'
+    backup: true
+
+- name: replace name in the configuration file
+  replace:
+    path: /etc/auditbeat/auditbeat.yml
+    regexp: labname
+    replace: "{{ ansible_facts['hostname'] }}"
+    backup: true
+
+- name: stop auditd.service to avoid interfering with auditbeat
+  shell:
+    cmd: "service auditd stop"
+
+- name: add host names to the datasets
+  replace:
+    path: /etc/auditbeat/auditbeat.yml
+    regexp: labname
+    replace: "{{ ansible_hostname }}"
+    
+- name: setup auditbeat
+  command:
+    auditbeat setup
+
+- name: start auditbeat services
+  service:
+    name: auditbeat
+    state: restarted
+    enabled: true
+    
+...

@@ -1,0 +1,22 @@
+---
+- name: getting IP addresses into an array
+  hosts: phase1
+  tasks:
+    - name: getting IP addresses
+      shell: "hostname -I | awk '{ print $1 }'"
+      register: ip4_address
+
+    - name: print out ip4_addresses
+      debug:
+        msg: "{{ ip4_address.stdout }}"
+
+#    - name: add source IPs to "External" zone
+#      firewalld:
+#        zone: external
+#        state: disabled
+#        permanent: true
+#        source: "{{ item }}"
+#      with_items: "{{ ip4_address.stdout }}"
+
+#    - name: reload firewalld
+#      command: "firewall-cmd --reload"

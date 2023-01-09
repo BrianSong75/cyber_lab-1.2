@@ -1,0 +1,18 @@
+---
+- name: phase 3 of cyber lab setting
+  hosts: phase2
+  roles:
+
+#    - default_ipv4
+#    - firewall_up
+#    - nginx
+#    - docker_setup
+#    - elk_server_setup
+#    - web_app_setup
+#    - auditbeat
+#    - filebeat
+#    - heartbeat
+    - metricbeat
+    - packetbeat
+    
+...

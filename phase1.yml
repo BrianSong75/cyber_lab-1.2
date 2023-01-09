@@ -1,0 +1,11 @@
+---
+- name: set up the base system
+  hosts: phase1
+  roles:
+
+    - system_update
+#    - vbox_vagrant
+#    - deploying_VMs
+
+
+...

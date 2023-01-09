@@ -1,0 +1,14 @@
+---
+- name: debugging service module
+  hosts: farms
+  tasks:
+
+    - name: stop auditd service
+      service:
+        name: auditd
+        enabled: false
+        state: stopped
+        use: service
+      become: true
+      become_user: root
+...

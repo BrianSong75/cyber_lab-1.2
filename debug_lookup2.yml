@@ -1,0 +1,17 @@
+---
+- name: set_fact's lookup function testing
+  hosts: phase1
+  tasks:
+    - name: setting facts
+      set_fact:
+        iptable:
+          - "{{ lookup( 'ansible_facts', 'ansible_default_ipv4.address' ) }}"
+
+    - name: print iptable
+      debug:
+        msg: "{{ item }}"
+      with_items: "{{ iptable }}"
+
+...
+
+

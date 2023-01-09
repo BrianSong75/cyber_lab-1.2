@@ -1,0 +1,24 @@
+---
+- name: debugger
+  hosts: phase1
+  tasks:
+
+
+    - name: set facts
+      set_fact:
+        farm0:
+          - { ip: '{{ ansible_default_ipv4.address }}', name: '{{ ansible_hostname }}' }
+        farm1:
+          - { ip: '{{ ansible_default_ipv4.address }}', name: '{{ ansible_hostname }}' }
+        farm2:
+          - { ip: '{{ ansible_default_ipv4.address }}', name: '{{ ansible_hostname }}' }
+
+    - name: print out
+      debug:
+        msg: '"{{ item.ip }}" & "{{ item.name }}"'
+      with_items:
+        - "{{ farm0 }}"
+        - "{{ farm1 }}"
+        - "{{ farm2 }}"
+
+...

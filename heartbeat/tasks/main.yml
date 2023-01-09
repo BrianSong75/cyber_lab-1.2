@@ -1,0 +1,101 @@
+---
+- name: download hearbeat rpm file
+  get_url:
+    url: https://artifacts.elastic.co/downloads/beats/heartbeat/heartbeat-8.3.3-x86_64.rpm
+    dest: /home/minion/ansible/roles/heartbeat/files/
+    force: true
+  when: ansible_facts['hostname'] == "jbox"
+
+- name: copy heartbeat installation package file
+  copy:
+    src: heartbeat-8.3.3-x86_64.rpm
+    dest: /tmp/heartbeat-8.3.3-x86_64.rpm
+    owner: root
+    mode: '0644'
+  when:
+    - ansible_facts['hostname'] != "jbox"
+    - ansible_facts['hostname'] != "log"
+    - ansible_facts['hostname'] != "vpn"
+    - ansible_facts['hostname'] is not match ("Farm*")
+
+- name: install heartbeat
+  dnf:
+    name: /tmp/heartbeat-8.3.3-x86_64.rpm
+    state: present
+    disable_gpg_check: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+    - ansible_facts['hostname'] != "jbox"
+    - ansible_facts['hostname'] != "log"
+    - ansible_facts['hostname'] != "vpn"
+    - ansible_facts['hostname'] is not match ("Farm*")
+
+- name: install heartbeat
+  yum:
+    name: /tmp/heartbeat-8.3.3-x86_64.rpm
+    state: present
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+    - ansible_facts['hostname'] != "jbox"
+    - ansible_facts['hostname'] != "log"
+    - ansible_facts['hostname'] != "vpn"
+    - ansible_facts['hostname'] is not match ("Farm*")
+
+- name: copy pre-configured config file
+  copy:
+    src: heartbeat_elk.yml
+    dest: /etc/heartbeat/heartbeat.yml
+    owner: root
+    mode: '0600'
+    backup: true
+  when: ansible_facts['hostname'] == "ELK"
+
+- name: copy pre-configured config file
+  copy:
+    src: heartbeat_lb.yml
+    dest: /etc/heartbeat/heartbeat.yml
+    owner: root
+    mode: '0600'
+    backup: true
+  when: ansible_facts['hostname'] == "lb"
+
+- name: copy pre-configured config file
+  copy:
+    src: heartbeat_ws1.yml
+    dest: /etc/heartbeat/heartbeat.yml
+    owner: root
+    mode: '0600'
+    backup: true
+  when: ansible_facts['hostname'] is match ("ws*")
+
+- name: replace names in heartbeat config file
+  replace:
+    path: /etc/heartbeat/heartbeat.yml
+    regexp: "{{ item.0 }}"
+    replace: "{{ ansible_facts['hostname'] }}"
+  with_items: [ 'ws1', 'WS1' ]
+  when: ansible_facts['hostname'] is match ("ws*") or ansible_facts['hostname'] == "lb" or ansible_facts['hostname'] == "ELK"
+
+- name: set up heartbeat
+  command:
+    heartbeat setup
+  when:
+    - ansible_facts['hostname'] != "jbox"
+    - ansible_facts['hostname'] != "log"
+    - ansible_facts['hostname'] != "vpn"
+    - ansible_facts['hostname'] is not match ("Farm*")
+
+- name: start heartbeat service
+  service:
+    name: heartbeat-elastic
+    enabled: true
+    state: restarted
+  when:
+    - ansible_facts['hostname'] != "jbox"
+    - ansible_facts['hostname'] != "log"
+    - ansible_facts['hostname'] != "vpn"
+    - ansible_facts['hostname'] is not match ("Farm*")
+
+...

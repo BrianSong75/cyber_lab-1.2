@@ -1,0 +1,37 @@
+---
+- name: debugging with_nested options
+  hosts: phase2
+  tasks:
+    - name: set port#s & web server names as facts
+      set_fact:
+        ws:
+          - { name: 'dvwa', port: '18000' }
+          - { name: 'bwapp', port: '18800' }
+          - { name: 'mutillidae', port: '18880/mutillidae' }
+        ips:
+          - { ip: '192.168.0.231', ws_name: 'ws1' }
+          - { ip: '192.168.0.232', ws_name: 'ws2' }
+          - { ip: '192.168.0.241', ws_name: 'ws3' }
+
+    - name: remove old IPs in /etc/hosts at lb
+      lineinfile:
+        path: /etc/hosts
+        state: absent
+        regexp: "{{ item.ws_name }}"
+        backup: true
+      with_items:  "{{ ips }}"
+      when: ansible_facts['hostname'] == "lb"
+
+    - name: update /etc/hosts at lb
+      lineinfile:
+        path: /etc/hosts
+        state: present
+        backup: true
+#        regexp: "{{ item.0.name }}"
+        line: "{{ item.1.ip }}   {{ item.1.ws_name }}.{{ item.0.name }}.lab"
+      with_nested:
+        - "{{ ws }}"
+        - "{{ ips }}"
+      when: ansible_facts['hostname'] == "lb"
+
+...

@@ -1,0 +1,9 @@
+---
+- name: turn off auditd
+  hosts: farms
+  tasks:
+    - name: turn off auditd
+      shell:
+        cmd: "service auditd stop"
+        
+...

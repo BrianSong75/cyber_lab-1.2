@@ -1,0 +1,125 @@
+---
+- name: download metricbeat rpm file
+  get_url:
+    url: https://artifacts.elastic.co/downloads/beats/metricbeat/metricbeat-8.3.3-x86_64.rpm
+    dest: /home/minion/ansible/roles/metricbeat/files/
+    force: true
+  when: ansible_facts['hostname'] == "jbox"
+
+- name: copy metricbeat installation package
+  copy:
+    src: "metricbeat-8.3.3-x86_64.rpm"
+    dest: "/tmp/metricbeat-8.3.3-x86_64.rpm"
+    owner: root
+    mode: '0644'
+    backup: true
+
+#- name: stopping metricbeat service
+#  service:
+#    name: metricbeat
+#    state: stopped
+#    enabled: false
+
+- name: uninstall metricbeat first
+  dnf:
+    name: metricbeat
+    state: absent
+    autoremove: true
+  when:
+    - ansible_os_family == "RedHat"
+    - ansible_distribution_major_version | int >= 8
+
+- name: uninstall metricbeat first
+  yum:
+    name: metricbeat
+    state: absent
+    autoremove: true
+  when: 
+    - ansible_os_family == "RedHat"
+    - ansible_distribution_major_version | int <= 7
+
+- name: remove files
+  file:
+    path: /etc/metricbeat
+    state: absent
+
+- name: install metricbeat
+  dnf:
+    name: "/tmp/metricbeat-8.3.3-x86_64.rpm"
+    state: present
+    disable_gpg_check: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: install metricbeat on CentOS machines
+  yum:
+    name: "/tmp/metricbeat-8.3.3-x86_64.rpm"
+    state: present
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: copy metricbeat.yml file
+  copy:
+    src: metricbeat.yml
+    dest: /etc/metricbeat/
+    owner: root
+    mode: '0644'
+    backup: true
+
+- name: replace names
+  replace:
+    path: /etc/metricbeat/metricbeat.yml
+    regexp: labname
+    replace: "{{ ansible_facts['hostname'] }}"
+    backup: true
+
+- name: copy pre-configured configuration file for metricbeat
+  copy:
+    src: "metricbeat.yml"
+    dest: "/etc/metricbeat/metricbeat.yml"
+    owner: root
+    mode: '0600'
+    backup: true
+
+- name: enable metricbeat modules
+  command:
+    metricbeat modules enable system linux
+
+- name: enable docker metricbeat module
+  command:
+    metricbeat modules enable docker
+  when: ansible_facts['hostname'] == "ELK" or ansible_facts['hostname'] is match ("ws*")
+
+- name: copy pre-configured module configuration files
+  copy:
+    src: docker.yml
+    dest: "/etc/metricbeat/modules.d/"
+    owner: root
+    mode: '0600'
+    backup: true
+  when: ansible_facts['hostname'] is match ("ws*") or ansible_facts['hostname'] == "ELK"
+
+- name: copy pre-configured module configuration files
+  copy:
+    src: "{{ item }}"
+    dest: "/etc/metricbeat/modules.d/{{ item }}"
+    owner: root
+    mode: '0600'
+    backup: true
+  with_items:
+    - "linux.yml"
+    - "system.yml"
+
+- name: set up metricbeat
+  command:
+    metricbeat setup -e
+
+- name: start metricbeat service
+  service:
+    name: metricbeat
+    enabled: true
+    state: restarted
+
+...

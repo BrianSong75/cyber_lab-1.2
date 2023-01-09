@@ -1,0 +1,107 @@
+---
+- name: install firewall-cmd
+  dnf:
+    name: firewalld
+    state: latest
+    install_weak_deps: true
+
+- name: modify zone "Work" for internal network only
+  firewalld:
+    zone: work
+    service: dhcpv6-client
+    state: disabled
+    permanent: true
+
+- name: whitelist the controller IPs
+  firewalld:
+    zone: work
+    source: "{{ item }}"
+    permanent: true
+    state: enabled
+  with_items:
+    - "192.168.1.120"
+    - "192.168.1.149"
+
+- name: strip "public" zone from any services
+  firewalld:
+    zone: public
+    service: "{{ item }}"
+    state: disabled
+    permanent: true
+  with_items:
+    - dhcpv6-client
+    - cockpit
+    - ssh
+
+- name: change the target in "public" zone
+  shell:
+    cmd: "firewall-cmd --zone=public --set-target=DROP --permanent && firewall-cmd --reload"
+
+- name: add ping blocks to "public" zone
+  firewalld:
+    zone: public
+    permanent: true
+    state: enabled
+    icmp_block: "{{ item }}"
+  with_items:
+    - "echo-reply"
+    - "echo-request"
+
+- name: add http & http
+s services to "work" zone at web servers
+  firewalld:
+    zone: work
+    permanent: true
+    state: enabled
+    service: "{{ item }}"
+  with_items:
+    - http
+    - https
+  when: ansible_hostname is match"ws*"
+
+- name: add ssh to "public" zone in jbox
+  firewalld:
+    zone: public
+    state: enabled
+    service: ssh
+    permanent: true
+  when: ansible_hostname == "jbox"
+
+- name: remove sources from "work" zone in jbox
+  firewalld:
+    zone: work
+    state: disabled
+    permanent: true
+    source: "{{ item }}"
+  with_items:
+    - "192.168.1.120"
+    - "192.168.1.149"
+
+- name: add http & https service to "public" zone in lb
+  firewalld:
+    zone: public
+    state: enabled
+    permanent: true
+    service: "{{ item }}"
+  with_items:
+    - http
+    - https
+
+- name: add elasticsearch & kibana services to "public" in elk
+  firewalld:
+    zone: public
+    state: enabled
+    permanent: true
+    service: "{{ item }}"
+  loop:
+    - elasticsearch
+    - kibana
+
+
+- name: start firewalld.service
+  service:
+    name: firewalld.service
+    enabled: true
+    state: restarted
+    
+...

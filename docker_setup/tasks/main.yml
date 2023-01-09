@@ -1,0 +1,104 @@
+---
+- name: remove Podman & its friends
+  dnf:
+    name: ['podman','skopeo','buildah']
+    state: absent
+    autoremove: true
+    update_cache: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: remove Podman & its friends
+  yum:
+    name: ['podman','skopeo','buildah']
+    state: absent
+    autoremove: true
+    update_cache: true
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: add dnf-utils, zip, & unzip
+  dnf:
+    name: ['dnf-utils','zip','unzip']
+    state: latest
+    install_weak_deps: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: add yum-utils, zip, & unzip
+  yum:
+    name: ['yum-utils','zip','unzip']
+    state: latest
+    install_weak_deps: true
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: remove runc package
+  dnf:
+    name: runc
+    state: absent
+    autoremove: true
+  when:
+    - ansible_facts['distribution_major_version'] | int >= 8
+    - ansible_os_family == "RedHat"
+
+
+- name: remove runc package
+  yum:
+    name: runc
+    state: absent
+    autoremove: true
+  when: 
+    - ansible_facts['distribution_major_version'] | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: add docker-ce repository
+  get_url:
+    dest: "/etc/yum.repos.d/"
+    owner: root
+    mode: '0644'
+    url: "https://download.docker.com/linux/centos/docker-ce.repo"
+  when:
+    - ansible_virtualization_role != "host"
+    - ansible_distribution_major_version | int >= 8
+
+- name: making sure docker-ce.repo is enabled
+  ini_file:
+    backup: true
+    path: "/etc/yum.repos.d/docker-ce.repo"
+    state: present
+    section: "docker-ce-stable"
+    option: "enabled"
+    value: 1
+    no_extra_spaces: true
+  when:
+    - ansible_virtualization_role != "host"
+    - ansible_distribution_major_version | int >= 8
+
+- name: add docker packages
+  dnf:
+    update_cache: true
+    name: docker-ce
+    state: latest
+    install_weak_deps: true
+  when:
+    - ansible_virtualization_role != "host"
+    - ansible_distribution_major_version | int >= 8
+
+- name: start docker service
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - "docker.service"
+    - "containerd.service"
+  when:
+    - ansible_virtualization_role != "host"
+    - ansible_distribution_major_version | int >= 8
+
+...

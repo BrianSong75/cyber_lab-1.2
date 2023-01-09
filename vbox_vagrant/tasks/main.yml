@@ -1,0 +1,35 @@
+---
+- name: install dependencies for VirtualBox
+  dnf:
+    name: "{{ item }}"
+    state: latest
+    install_weak_deps: true
+    update_cache: true
+  with_items:
+    - "gcc"
+    - "make"
+    - "perl"
+    - "kernel-devel"
+    - "kernel-headers"
+    - "bzip2"
+    - "dkms"
+
+- name: install Virtualbox
+  dnf:
+    name: VirtualBox-6.1
+    state: latest
+    install_weak_deps: true
+  when: ansible_facts['virtualization_role'] == "host"
+
+- name: install vboxconfig
+  command: /sbin/vboxconfig
+  when: ansible_virtualization_role == "host"
+
+- name: install Vagrant
+  dnf:
+    name: vagrant
+    state: latest
+    install_weak_deps: true
+  when: ansible_facts['virtualization_role'] == "host"
+
+...

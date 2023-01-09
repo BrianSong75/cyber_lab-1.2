@@ -1,0 +1,66 @@
+---
+- name: update sysctl policy on vm.max_map_count
+  sysctl: 
+    name: "vm.max_map_count"
+    value: "262144"
+    state: present
+    reload: true
+    sysctl_set: true
+  when: ansible_facts['hostname'] == "ELK"
+
+- name: install python2
+  yum:
+    name: [ 'python2', 'python2-pip' ]
+    state: present
+    install_weak_deps: true
+    update_cache: true
+  when: ansible_facts['hostname'] == "ELK"
+
+- name: install pip2 docker
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  pip:
+    name: docker
+    state: present
+  when: ansible_facts['hostname'] == "ELK"
+
+- name: change SElinux policy on proxy servers
+  command:
+    setsebool -P httpd_can_network_connect 1
+  when: ansible_facts['hostname'] == "ELK"
+
+- name: remove old ELK container
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  docker_container:
+    name: elk
+    auto_remove: true
+    state: absent
+  when: ansible_facts['hostname'] == "ELK"
+        
+- name:	install ELK container 
+  vars:
+    ansible_python_interpreter: /usr/bin/python2
+  docker_container:
+    name: elk
+    image: sebp/elk
+    log_driver:	syslog
+    log_options:
+      syslog-address: udp://127.0.0.1:514
+      syslog-facility: daemon
+      syslog-tls-skip-verify: "true"
+      syslog-format: rfc5424micro
+      mode: non-blocking
+      max-buffer-size: 4m
+      tag: elk
+    ports:
+      - "5601:5601/tcp"
+      - "9200:9200/tcp"
+      - "5044:5044/tcp"
+      - "9300:9300/tcp"
+      - "9600:9600/tcp"
+    restart_policy: always
+    state: started
+  when: ansible_facts ['hostname'] == "ELK"
+
+...

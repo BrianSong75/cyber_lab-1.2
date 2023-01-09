@@ -1,0 +1,32 @@
+---
+- name: debugging.  looking up files & register
+  hosts: vms
+  tasks:
+
+    - name: register main IP address
+      shell:
+        cmd: "hostname -I | awk '{ print $2 }'"
+      register: default_ipv4
+
+    - name: print out default_ipv4.stdout
+      debug:
+        msg: "{{ default_ipv4.stdout }}"
+
+    - name: register file names to disable DEFROUTE
+      shell:
+        cmd: "grep -L -e {{ default_ipv4.stdout }} /etc/sysconfig/network-scripts/*"
+      register: dis_def_files
+
+    - name: register file names to enable DEFROUTE
+      shell:
+        cmd: "grep -l -e {{ default_ipv4.stdout }} /etc/sysconfig/network-scripts/*"
+      register: en_def_files
+
+    - name: print out registered values
+      debug:
+        msg: "{{ item }}"
+      with_items:
+#        - "{{ default_ipv4.stdout }}"
+#        - "{{ dis_def_files.stdout_lines }}"
+        - "{{ en_def_files.stdout_lines }}"
+...

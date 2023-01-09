@@ -1,0 +1,11 @@
+---
+- name: debug messaging
+  hosts: farms
+  tasks:
+    - name: debug lookup function
+      debug:
+        msg: "in directory {{ item[0] }}, files of {{ item[1] }} have been copied"
+      with_nested:
+        - [ dvwa, bwapp, mutillidae ]
+        - "{{ lookup('fileglob', '/usr/share/nginx/html/*.html').split(',') }}"
+

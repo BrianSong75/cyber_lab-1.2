@@ -1,0 +1,76 @@
+---
+- name: download packetbeat rpm file
+  get_url:
+    url: https://artifacts.elastic.co/downloads/beats/packetbeat/packetbeat-8.3.3-x86_64.rpm
+    dest: /home/minion/ansible/roles/packetbeat/files/
+    force: true
+  when: ansible_facts['hostname'] == "jbox"
+
+- name: install libpcap for packetbeat
+  dnf:
+    name: libpcap
+    state: latest
+    install_weak_deps: true
+  when:
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: install libpcap for packetbeat
+  yum:
+    name: libpcap
+    state: latest
+    install_weak_deps: true
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+
+- name: copy packetbeat installation file
+  copy:
+    src: packetbeat-8.3.3-x86_64.rpm
+    dest: /tmp/packetbeat-8.3.3-x86_64.rpm
+    owner: root
+    mode: '0644'
+
+- name: install packetbeat
+  dnf:
+    name: "/tmp/packetbeat-8.3.3-x86_64.rpm"
+    state: present
+    disable_gpg_check: true
+  when: 
+    - ansible_distribution_major_version | int >= 8
+    - ansible_os_family == "RedHat"
+
+- name: install packetbeat
+  yum:
+    name: "/tmp/packetbeat-8.3.3-x86_64.rpm"
+    state: present
+  when:
+    - ansible_distribution_major_version | int <= 7
+    - ansible_os_family == "RedHat"
+    
+- name: copy pre-configured configuration file for packetbeat
+  copy:
+   src: "packetbeat.yml"
+   dest: "/etc/packetbeat/packetbeat.yml"
+   owner: root
+   mode: '0600'
+   backup: true
+
+- name: replace name in the configuration file
+  replace:
+    path: /etc/packetbeat/packetbeat.yml
+    regexp: labname
+    replace: "{{ ansible_facts['hostname'] }}"
+    backup: true
+
+- name: set up packetbeat
+  command:
+    packetbeat setup
+
+- name: start packetbeat service
+  service:
+    name: packetbeat
+    enabled: true
+    state: restarted
+
+...

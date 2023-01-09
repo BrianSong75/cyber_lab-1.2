@@ -1,0 +1,8 @@
+---
+- name: changing target
+  hosts: jbox
+  tasks:
+    - name: changing target from default to DROP
+      shell:
+        cmd: "firewall-cmd --permanent --zone=public --set-target=default && firewall-cmd --reload"
+

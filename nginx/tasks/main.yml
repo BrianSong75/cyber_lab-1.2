@@ -1,0 +1,412 @@
+---
+- name: make sure there is no nginx repo files in /etc/yum.repos.d/
+  file:
+    path: /etc/yum.repos.d/{{ item }}
+    state: absent
+    force: true
+  loop:
+    - nginx.repo
+    - '"nginx-stable".repo'
+    - '"nginx-mainline".repo'
+
+- name: install nginx mainline repo file
+  yum_repository:
+    name: "nginx-mainline"
+    description: nginx mainline repo
+    baseurl: 'http://nginx.org/packages/mainline/centos/$releasever/$basearch/'
+    gpgcheck: true
+    gpgkey: "https://nginx.org/keys/nginx_signing.key"
+    enabled: true
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+ 
+- name: install nginx stable repo file
+  yum_repository:
+    name: "nginx-stable"
+    description: nginx stable repo
+    baseurl:  'http://nginx.org/packages/centos/$releasever/$basearch'
+    gpgcheck: true
+    gpgkey: "http://nginx.org/keys/nginx_signing.key"
+    enabled: true
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+
+- name: add module_hotfix to nginx repos
+  ini_file:
+    backup: true
+    no_extra_spaces: true
+    path: /etc/yum.repos.d/{{ item }}.repo
+    section: "{{ item }}"
+    option: "module_hotfixes"
+    value: "true"
+    state: present
+  loop:
+    - "nginx-stable"
+    - "nginx-mainline"
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+
+- name: create a list of conf files need to be deleted
+  shell:
+    cmd: "ls /etc/nginx/*.conf && ls /etc/nginx/conf.d/*.conf"
+  register: old_conf_files
+  when:
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+    - ansible_hostname is not match ("Farm*")
+
+- name: remove all old nginx configuration files
+  file:
+    path: "{{ item }}"
+    state: absent
+    force: true
+  with_items: "{{ old_conf_files.stdout_lines }}"
+  when:
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+    - ansible_hostname is not match ("Farm*")
+
+- name: remove old stream configuration from lb
+  file:
+    path: /etc/nginx/stream.conf.d/
+    state: absent
+    force: true
+  when: ansible_hostname == "lb"
+
+- name: remove old nginx installation
+  dnf:
+    name: nginx
+    state: absent
+    autoremove: true
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+
+- name: install nginx
+  dnf:
+    name: [ nginx, GeoIP ]
+    state: latest
+    enablerepo: "nginx-stable"
+    install_weak_deps: true
+    update_cache: true
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+
+- name: install nginx-module-geoip from CENTOS7 repository
+  command: "sudo dnf install -y nginx-module-geoip --releasever 7 --repo nginx-mainline"
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+
+- name: install geoip database
+  dnf:
+    name: GeoIP
+    state: latest
+    install_weak_deps: true
+    update_cache: true
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+
+#- name: create a stream configuration directory
+#  file:
+#    path: /etc/nginx/stream.conf.d/
+#    state: directory
+#    force: true
+#  when: ansible_hostname == "lb"
+
+#- name: add stream block in nginx.conf
+#  blockinfile:
+#    path: /etc/nginx/nginx.conf
+#    state: present
+#    backup: true
+#    insertbefore: "^http"
+#    marker_begin: "stream block begin"
+#    marker_end: "stream block end"
+#    marker: "#{mark}"
+#    block: |
+#      load_module /usr/lib64/nginx/modules/ngx_http_geoip_module.so;
+
+#      stream {
+#          include /etc/nginx/stream.conf.d/*.conf;
+
+#          geoip_country /usr/share/GeoIP/GeoIP.dat;
+#          geoip_city /usr/share/GeoIP/GeoIP.dat;
+
+#          map $geoip_country_code $country_access {
+#              "US"	0;
+#              default	1;
+#          } 
+#      }
+
+#  when: ansible_hostname == "lb"
+
+- name: adding geoIP module in nginx.conf
+  lineinfile:
+    path: /etc/nginx/nginx.conf
+    state: present
+    firstmatch: true
+    backup: true
+    insertafter: "pid;"
+    line: "load_module /usr/lib64/nginx/modules/ngx_http_geoip_module.so;"
+  when: ansible_hostname == "lb"
+
+- name: adding geoIP mapping to http block
+  blockinfile:
+    path: /etc/nginx/nginx.conf
+    state: present
+    backup: true
+    marker: "#{mark}"
+    marker_begin: "geoIP mapping"
+    marker_end: "geoIP mapping"
+    insertbefore: access_log
+    block: |1
+
+         geoip_country	/usr/share/GeoIP/GeoIP.dat;
+
+         map $geoip_country_code $country_access {
+             "US"	0;
+             "RU"	1;
+         }
+
+  when: ansible_hostname == "lb"
+
+- name: create load-balancing configuration for lb
+  blockinfile:
+    path: "/etc/nginx/conf.d/{{ item }}.conf"
+    create: true
+    state: present
+    block: |2
+          upstream {{ item }} {
+              hash consistent;
+              zone backend 128k;
+              server ws1.{{ item }}.lab:80 max_fails=3 fail_timeout=10s;
+              server ws2.{{ item }}.lab:80 max_fails=3 fail_timeout=10s;
+              server ws3.{{ item }}.lab:80 max_fails=3 fail_timeout=10s;
+          }
+
+          server {
+              listen 80;
+              server_name {{ item }}.lab;
+
+              if ($country_access = '1') {
+                  return 403;
+              }
+
+              location / {
+                  proxy_pass http://{{ item }};
+                  proxy_set_header Host $http_host;
+              }
+          }
+  loop:
+    - dvwa
+    - bwapp
+    - mutillidae
+  when: ansible_hostname == "lb"
+
+- name: set port#s & web server names as facts
+  set_fact:
+    ws:
+      - { name: 'dvwa', port: '18000' }
+      - { name: 'bwapp', port: '18800' }
+      - { name: 'mutillidae', port: '18880' }
+    ips:
+      - { ip: '192.168.0.231', ws_name: 'ws1' }
+      - { ip: '192.168.0.232', ws_name: 'ws2' }
+      - { ip: '192.168.0.241', ws_name: 'ws3' }
+
+- name: delete any old IPs in /etc/hosts at lb
+  lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: "{{ item.ws_name }}"
+    backup: true
+  with_items: "{{ ips }}"
+  when: ansible_facts['hostname'] == "lb"
+
+- name: update /etc/hosts at lb
+  lineinfile:
+    path: /etc/hosts
+    state: present
+    line: "{{ item.1.ip }}   {{ item.1.ws_name }}.{{ item.0.name }}.lab"
+  with_nested:
+    - "{{ ws }}"
+    - "{{ ips }}"
+  when: ansible_facts['hostname'] == "lb"
+
+- name: create backend server configuration for each web server
+  blockinfile:
+    path: "/etc/nginx/conf.d/{{ item.name }}.conf"
+    create: true
+    state: present
+    block: |
+      server {
+          listen 80;
+          server_name {{ item.name }}.lab;
+
+          location / {
+              proxy_pass http://localhost:{{ item.port }};
+              root /usr/share/ws/{{ item.name }}/html;
+              index index.html;
+          }
+      }
+  with_items: "{{ ws }}"
+  when: ansible_hostname is match ("ws*")
+
+- name: create web server directories
+  file:
+    path: "/usr/share/ws/{{ item.name }}/html"
+    state: directory
+    force: true
+  loop: "{{ ws }}"
+  when: ansible_hostname is match ("ws*")
+
+- name: create the list of html files that need to be copied
+  shell:
+    cmd: "ls /usr/share/nginx/html/*.html"
+  register: html_files
+  when:
+    - ansible_facts['hostname'] is not match ("Farm*")
+    - ansible_facts['hostname'] != "jbox"
+    - ansible_facts['hostname'] != "log"
+    - ansible_facts['hostname'] != "vpn"
+
+- name: copy .html files to each web server directory
+  copy:
+    src: "{{ item.1 }}"
+    dest: "/usr/share/ws/{{ item.0.name }}/html"
+    force: true
+    remote_src: true
+  with_nested:
+    - "{{ ws }}"
+    - "{{ html_files.stdout_lines }}"
+  when: ansible_hostname is match ("ws*")
+
+- name: update index.html files accordingly
+  replace:
+    path: "/usr/share/ws/{{ item.name }}/html/index.html"
+    backup: true
+    before: "If"
+    regexp: 'nginx!'
+    replace: "{{ ansible_hostname }}.{{ item.name }}.lab"
+  loop: "{{ ws }}"
+  when: ansible_hostname is match ("ws*")
+
+- name: create kibana.conf on ELK
+  blockinfile:
+    path: "/etc/nginx/conf.d/kibana.conf"
+    create: true
+    backup: true
+    state: present
+    marker: "#{mark} Kibana conf block"
+    marker_begin: "BEGIN"
+    marker_end: "END"
+    block: |
+      geoip_country	/usr/share/GeoIP/GeoIP.dat;
+
+      map $geoip_country_code $country_access {
+          "US"	0;
+          "RS"	1;
+      }
+
+      server {
+          listen 80;
+          server_name kibana.lab;
+
+          if ($country_access = 1) {
+               return 403;
+          }
+
+          location / {
+              root /usr/share/elk/html;
+              index index.html;
+
+              proxy_pass http://localhost:5601;
+          }
+      }
+  when: ansible_hostname == "ELK"
+
+- name: add GeoIP module loading in nginx.conf@ELK
+  lineinfile:
+    path: "/etc/nginx/nginx.conf"
+    state: present
+    backup: true
+    firstmatch: true
+    insertafter: "pid;"
+    line: "load_module /usr/lib64/nginx/modules/ngx_http_geoip_module.so;" 
+  when: ansible_hostname == "ELK"
+
+- name: create elk directory for ELK
+  file:
+    path: "/usr/share/elk/html"
+    force: true
+    state: directory
+  when: ansible_hostname == "ELK"
+
+- name: copy index.html to elk directory
+  copy:
+    src: "{{ item }}"
+    dest: "/usr/share/elk/html"
+    force: true
+    remote_src: true
+  with_items: "{{ html_files.stdout_lines }}"
+  when: ansible_hostname == "ELK"
+
+- name: update index.html for ELK
+  replace:
+    path: "/usr/share/elk/html/index.html"
+    backup: true
+    before: "If"
+    regexp: "nginx!"
+    replace: "KIBANA"
+  when: ansible_hostname == "ELK"
+
+- name: add group root to nginx user
+  user:
+    name: nginx
+    append: true
+    groups: root
+    state: present
+  when:
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+    - ansible_hostname is not match ("Farm*")
+
+- name: allow lb to loadbalance among the webservers
+  command: "setsebool -P httpd_can_network_connect 1"
+  when: ansible_facts['hostname'] is match ("ws*") or ansible_facts['hostname'] == "lb"
+
+- name: start nginx services
+  systemd:
+    name: nginx
+    enabled: true
+    state: restarted
+    force: true
+  when:
+    - ansible_hostname is not match ("Farm*")
+    - ansible_hostname != "jbox"
+    - ansible_hostname != "log"
+    - ansible_hostname != "vpn"
+...
+

@@ -1,0 +1,113 @@
+---
+- name: install yum-utils
+  yum:
+    name: yum-utils
+    state: latest
+    install_weak_deps: true
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: activating all the repositories for Alma Linux 8.6
+  ini_file:
+    path: "/etc/yum.repos.d/almalinux-{{ item }}.repo"
+    section: "{{ item }}"
+    option: enabled
+    value: 1
+    no_extra_spaces: true
+  loop:
+    - "ha"
+    - "nfv"
+    - "plus"
+    - "powertools"
+    - "resilientstorage"
+    - "rt"
+  when: 
+    - ansible_distribution == "AlmaLinux"
+    - ansible_distribution_version == "8.6"
+
+- name: activating all epel repositories for Alma Linux 8.6
+  ini_file:
+    path: "/etc/yum.repos.d/{{ item }}.repo"
+    section: "{{ item }}"
+    option: enabled
+    value: 1
+    no_extra_spaces: true
+  loop:
+    - "epel-modular"
+    - "epel-playground"
+    - "epel"
+  when: ansible_distribution == "AlmaLinux" and ansible_distribution_version | int == "8.6"
+ 
+- name: install other availabel epel repositories
+  dnf:
+    name: "{{ item }}"
+    state: latest
+    install_weak_deps: true
+  when: ansible_os_family == "RedHat"
+  loop:
+    - "epel-release"
+    - "epel-next-release"
+    - "epel-rpm-macros"
+    - "epel-rpm-macros-systemd"
+
+- name: add VAGRANT repository
+  get_url:
+    url: "https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo"
+    dest: /etc/yum.repos.d/
+    owner: root
+    mode: '0644'
+  when: ansible_facts['virtualization_role'] == "host"
+
+- name: add GOOGLE-CHROME repository
+  yum_repository:
+    name: google-chrome
+    baseurl: 'http://dl.google.com/linux/chrome/rpm/stable/$basearch'
+    enabled: true
+    gpgcheck: true
+    gpgkey: "https://dl-ssl.google.com/linux/linux_signing_key.pub"
+    state: present
+    description: google-chrome repository
+  when: ansible_facts['virtualization_role'] != "guest"
+
+- name: add Virtualbox repository
+  get_url:
+    url: "https://download.virtualbox.org/virtualbox/rpm/el/virtualbox.repo"
+    dest: /etc/yum.repos.d/
+    owner: root
+    mode: '0644'
+  when: ansible_virtualization_role == "host"
+
+- name: update YUM repository
+  yum:
+    name: "*"
+    state: latest
+    install_weak_deps: true
+    update_cache: true
+    update_only: true
+    disablerepo: epel-next
+  when: ansible_facts ['os_family'] == "RedHat"
+
+- name: update DNF repository
+  dnf:
+    name: "*"
+    state: latest
+    install_weak_deps: true
+    update_cache: true
+    update_only: true
+    disablerepo: epel-next
+  when:
+    - ansible_facts['distribution_major_version'] | int >= 8
+    - ansible_facts['os_family'] == "RedHat"
+
+- name: install google-chrome
+  dnf:
+    name: google-chrome-stable
+    state: present
+    install_weak_deps: true
+  when: ansible_facts['virtualization_role'] != "guest"
+
+- name: install misc. packages
+  dnf:
+    name: ['htop', 'nano', 'python36', 'python3-pip', 'tree']
+    state: latest
+  when: ansible_facts['os_family'] == "RedHat"
+...

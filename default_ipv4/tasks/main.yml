@@ -1,0 +1,74 @@
+---
+- name: append gateway to a golbal config
+  ini_file:
+    path: /etc/sysconfig/network
+    backup: true
+    state: present
+    no_extra_spaces: true
+    section: null
+    option: GATEWAY
+    value: 192.168.0.1
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: register main ipv4 address for VMs
+  shell:
+    cmd: "hostname -I | awk '{ print $2 }'"
+  register: default_ipv4
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: register file names to disable DEFROUTE
+  shell:
+    cmd: "grep -L -e {{ default_ipv4.stdout }} /etc/sysconfig/network-scripts/*"
+  register: dis_def_files
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: register file name to add DEFROUTE
+  shell:
+    cmd: "grep -l -e {{ default_ipv4.stdout }} /etc/sysconfig/network-scripts/*"
+  register: en_def_files
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: change default route setting at the interface
+  ini_file:
+    path: "{{ item }}"
+    backup: true
+    state: present
+    no_extra_spaces: true
+    section: null
+    option: DEFROUTE
+    value: no
+  with_items: "{{ dis_def_files.stdout_lines }}"
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: enable DEFROUTE in main ipv4
+  ini_file:
+    path: "{{ item }}"
+    backup: true
+    state: present
+    no_extra_spaces: true
+    section: null
+    option: DEFROUTE
+    value: yes
+  with_items: "{{ en_def_files.stdout_lines }}"
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: restart NetworkManager service
+  systemd:
+    name: NetworkManager.service
+    state: restarted
+    enabled: true
+    force: true
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: register disabled device names
+  shell:
+    cmd: "grep -L -e {{ default_ipv4.stdout }} /etc/sysconfig/network-scripts/* | awk -F'-' '{ print $3 }' | awk -F'.' '{ print $1 }' | uniq"
+  register: disabled_dev
+  when: ansible_facts['virtualization_role'] == "guest"
+
+- name: reset disabled device files
+  shell:
+    cmd: "ip link set {{ item }} down && ip link set {{ item }} up"
+  with_items: "{{ disabled_dev.stdout_lines }}"
+  when: ansible_facts['virtualization_role'] == "guest"
+...

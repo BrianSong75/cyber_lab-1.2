@@ -1,0 +1,13 @@
+---
+- name: displaying files using fileglob & lookup function
+  hosts: phase2
+  tasks:
+    - name: copy files
+      copy: 
+        src: "{{ item.0 }}"
+        dest: "{{ item.1 }}"
+#        remote_src: yes
+      with_nested:
+        - "{{ lookup('fileglob', '/usr/share/nginx/html/*.html').split(',') }}"
+        - [ '/usr/share/ws/dvwa/html', '/usr/share/ws/bwapp/html', '/usr/share/mutillidae/html' ]
+      when: ansible_facts['hostname'] is match ("ws*")

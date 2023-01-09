@@ -1,0 +1,34 @@
+---
+- name: install rsync daemon
+  dnf:
+   name: rsync-daemon
+   state: latest
+   install_weak_deps: true
+   update_cache: true
+  when:
+    - ansible_distribution_major_version | int >= 8 
+    - ansible_os_family == "RedHat"
+
+- name: create rsyncd.conf
+  blockinfile:
+    path: /etc/rsyncd.conf
+    state: present
+    create: true
+    backup: true
+    owner: root
+    mode: '0644'
+    marker: "#{mark} Cyber.Lab "
+    block: |
+      [global]
+      pid file = /var/run/rsyncd.pid
+      uid = ansibot
+      gid = ansibot
+      use chroot = true
+      max connections = 10
+      transfer logging = true
+      timeout = 300
+      ignore nonreadable = true
+      dont compress = *.gz *.tgz *.zip *.z *.Z *.deb *.rpm *.bz2
+      
+    
+...
